@@ -13,6 +13,7 @@ constraintlayout = "2.2.1"
 navigationCompose = "2.8.8"
 appcompat = "1.7.0"
 gson = "2.10.1"
+runtimeLivedata = "1.7.8"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -34,6 +35,7 @@ androidx-constraintlayout = { module = "androidx.constraintlayout:constraintlayo
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
+androidx-runtime-livedata = { group = "androidx.compose.runtime", name = "runtime-livedata", version.ref = "runtimeLivedata" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
