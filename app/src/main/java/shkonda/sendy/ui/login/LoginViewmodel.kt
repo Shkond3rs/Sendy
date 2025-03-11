@@ -89,47 +89,48 @@ class LoginViewModel(
     /**
      * Обновляет номер телефона с учетом позиции курсора
      * Решает проблему с заменой символов при вводе в середину строки
+     * Запрещает ввод любых символов, кроме цифр
      *
      * @param value Текущее значение текстового поля с позицией курсора
      */
     fun updatePhoneWithCursor(value: TextFieldValue) {
-        val phone = value.text
+        val currentPhone = _phoneInput.value ?: ""
+        val newText = value.text
         val selection = value.selection
 
-        if (phone.isEmpty()) {
+        if (newText.isEmpty()) {
             _phoneInput.value = ""
             _textFieldValue.value = TextFieldValue(text = "", selection = androidx.compose.ui.text.TextRange(0))
             return
         }
 
+        // Проверяем, содержит ли новый текст недопустимые символы
+        if (!isDigitsOnly(newText)) {
+            // Если содержит недопустимые символы, сохраняем предыдущее состояние
+            _textFieldValue.value = TextFieldValue(text = currentPhone, selection = selection)
+            return
+        }
+
         // Если номер уже достиг максимальной длины и пытаются добавить еще символы
-        val currentPhone = _phoneInput.value ?: ""
-        if (currentPhone.length >= MAX_LENGTH_WITHOUT_CODE && phone.length > currentPhone.length) {
+        if (currentPhone.length >= MAX_LENGTH_WITHOUT_CODE && newText.length > currentPhone.length) {
             // Не обновляем номер, оставляем текущее значение
             _textFieldValue.value = TextFieldValue(text = currentPhone, selection = selection)
             return
         }
 
-        // Удаляем все нецифровые символы
-        val cleaned = phone.replace(PHONE_REGEX, "")
-
         // Обрабатываем различные форматы ввода
         val withoutPrefix = when {
-            // Если был символ "+" и номер начинается с 7, вероятно это был формат "+7..."
-            cleaned.startsWith("+7") && cleaned.length > 1 -> {
-                cleaned.substring(2)
+            // Если номер начинается с 8, заменяем 8 на пустую строку
+            newText.startsWith("8") && newText.length > 1 -> {
+                newText.substring(1)
             }
             // Если номер начинается с 7 и достаточно длинный, это может быть "7..."
-            cleaned.startsWith("7") && cleaned.length > MAX_LENGTH_WITHOUT_CODE -> {
-                cleaned.substring(1)
-            }
-            // Если номер начинается с 8, заменяем 8 на пустую строку (как в formatPhoneNumber)
-            cleaned.startsWith("8") && cleaned.length > 1 -> {
-                cleaned.substring(1)
+            newText.startsWith("7") && newText.length > MAX_LENGTH_WITHOUT_CODE -> {
+                newText.substring(1)
             }
             // В остальных случаях оставляем как есть
             else -> {
-                cleaned
+                newText
             }
         }
 
@@ -138,14 +139,14 @@ class LoginViewModel(
         val limited = if (withoutPrefix.length > maxDigits) withoutPrefix.substring(0, maxDigits) else withoutPrefix
 
         // Если пытаются ввести символ в середину (не в конец)
-        if (selection.start < currentPhone.length && phone.length != currentPhone.length) {
+        if (selection.start < currentPhone.length && newText.length != currentPhone.length) {
             // Определяем, сколько символов было до курсора в исходном тексте
-            val originalTextBeforeCursor = phone.substring(0, selection.start)
+            val originalTextBeforeCursor = newText.substring(0, selection.start)
             // Определяем, сколько цифр было до курсора в исходном тексте
-            val digitsBeforeCursor = originalTextBeforeCursor.count { it.isDigit() }
+            val digitsBeforeCursor = originalTextBeforeCursor.length
 
             // Определяем, сколько символов было удалено из-за префикса
-            val prefixOffset = if (cleaned.length != withoutPrefix.length) {
+            val prefixOffset = if (newText.length != withoutPrefix.length) {
                 if (digitsBeforeCursor > 0) 1 else 0 // Если курсор после первой цифры, учитываем префикс
             } else 0
 
@@ -161,10 +162,17 @@ class LoginViewModel(
         }
 
         // Для других случаев используем стандартный расчет позиции курсора
-        val newCursorPos = calculateNewCursorPosition(phone, cleaned, withoutPrefix, limited, selection.start)
+        val newCursorPos = calculateNewCursorPosition(newText, newText, withoutPrefix, limited, selection.start)
 
         _phoneInput.value = limited
         _textFieldValue.value = TextFieldValue(text = limited, selection = androidx.compose.ui.text.TextRange(newCursorPos))
+    }
+
+    /**
+     * Проверяет, содержит ли строка только цифры
+     */
+    private fun isDigitsOnly(text: String): Boolean {
+        return text.all { it.isDigit() }
     }
 
     /**
