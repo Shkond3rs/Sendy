@@ -1,5 +1,7 @@
 package shkonda.sendy.ui.sms
 
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -18,11 +20,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 
@@ -34,6 +34,13 @@ fun SmsCodeScreen(
     onNeedBankSelection: () -> Unit,
     onReturnToLogin: () -> Unit
 ) {
+    val context = LocalContext.current
+    // Просто перехватываем обработчик системной кнопки "Назад",
+    // чтобы никуда пользователь не убежал
+    BackHandler(enabled = true) {
+        Toast.makeText(context, "Нельзя назад!", Toast.LENGTH_SHORT).show()
+    }
+
     // Наблюдение за состоянием из ViewModel
     val uiState by viewModel.uiState.observeAsState()
     val smsCode by viewModel.smsCode.observeAsState("")
@@ -69,7 +76,13 @@ fun SmsCodeScreen(
 
         OutlinedTextField(
             value = smsCode,
-            onValueChange = { viewModel.updateSmsCode(it) },
+            onValueChange = { input ->
+                // Валидация без viewModel
+                // Я думаю так лучше поступать, когда проверка совсем небольшая, как с кодом подтверждения
+                // Обработка вставки из буфера обмена
+                val digitsOnly = input.filter { it.isDigit() }.take(6)
+                viewModel.updateSmsCode(digitsOnly)
+            },
             label = { Text("Введите 6-значный код") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             modifier = Modifier.fillMaxWidth(),

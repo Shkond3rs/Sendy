@@ -2,6 +2,7 @@ package shkonda.sendy.ui.login
 
 import android.webkit.WebView
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,15 +11,16 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -34,12 +36,70 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import shkonda.sendy.ui.theme.SendyTheme
+
+@Preview
+@Composable
+private fun textPrev() {
+    SendyTheme {
+        Surface {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                    Checkbox(
+                        checked = false,
+                        onCheckedChange = { }
+                    )
+                    Column(
+                        modifier = Modifier.padding(start = 8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Я согласен с ",
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.clickable(onClick = { })
+                            )
+                            Text(
+                                text = "правилами пользования",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.clickable { }
+                            )
+                        }
+                        Text(
+                            text = "Необходимо для продолжения регистрации",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
 
 @Composable
 fun LoginScreen(
@@ -54,20 +114,15 @@ fun LoginScreen(
 
     var showTermsDialog by remember { mutableStateOf(false) }
 
-    // Инициализация номера телефона с префиксом +7
-    LaunchedEffect(Unit) {
-        if (phone.isEmpty()) {
-            viewModel.updatePhone("+7 ")
-        }
-    }
-
     // Обработка состояний UI
     LaunchedEffect(uiState) {
         when (uiState) {
             is LoginUiState.Success -> {
                 onNavigateToSms((uiState as LoginUiState.Success).phone)
             }
-            else -> { /* Другие состояния обрабатываются в соответствии с решением команды разработчиков */ }
+
+            else -> { /* Другие состояния обрабатываются в соответствии с решением команды разработчиков */
+            }
         }
     }
 
@@ -87,13 +142,16 @@ fun LoginScreen(
         OutlinedTextField(
             value = phone,
             onValueChange = { viewModel.updatePhone(it) },
-            label = { Text("Телефон") },
-            placeholder = { Text("+7 XXX XXX XX XX") },
+            label = { Text("Номер телефона") },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 8.dp),
             enabled = uiState !is LoginUiState.Loading,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Phone
+            ),
+            singleLine = true,
+            maxLines = 1
         )
 
         if (uiState is LoginUiState.Error) {
@@ -104,23 +162,70 @@ fun LoginScreen(
             )
         }
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
+        // Заменяем строку с чекбоксом на карточку
+        Card(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 8.dp)
+                .clickable(
+                    enabled = uiState !is LoginUiState.Loading,
+                    onClick = { viewModel.updateAgreement(!isAgreed) }
+                ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (isAgreed)
+                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                else
+                    MaterialTheme.colorScheme.surface
+            )
         ) {
-            Checkbox(
-                checked = isAgreed,
-                onCheckedChange = { viewModel.updateAgreement(it) },
-                enabled = uiState !is LoginUiState.Loading
-            )
-            Text(
-                text = "Я согласен с ",
-                modifier = Modifier.padding(start = 8.dp)
-            )
-            TextButton(onClick = { showTermsDialog = true }) {
-                Text("правилами пользования")
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                Checkbox(
+                    checked = isAgreed,
+                    onCheckedChange = { viewModel.updateAgreement(it) },
+                    enabled = uiState !is LoginUiState.Loading,
+                    colors = CheckboxDefaults.colors(
+                        checkedColor = MaterialTheme.colorScheme.primary,
+                        uncheckedColor = MaterialTheme.colorScheme.outline
+                    )
+                )
+                Column(
+                    modifier = Modifier.padding(start = 8.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Я согласен с ",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text = "правилами пользования",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier
+                                .clickable(
+                                    enabled = uiState !is LoginUiState.Loading,
+                                    onClick = {
+                                        showTermsDialog = true
+                                    }
+                                )
+                                .padding(vertical = 4.dp, horizontal = 2.dp) // Увеличиваем область нажатия
+                        )
+                    }
+                    Text(
+                        text = "Необходимо для продолжения регистрации",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
             }
         }
 
@@ -228,7 +333,13 @@ fun LoginScreen(
                                         </html>
                                     """
 
-                                    loadDataWithBaseURL(null, styledHtml, "text/html", "UTF-8", null)
+                                    loadDataWithBaseURL(
+                                        null,
+                                        styledHtml,
+                                        "text/html",
+                                        "UTF-8",
+                                        null
+                                    )
                                 }
                             },
                             modifier = Modifier.fillMaxSize()

@@ -6,7 +6,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import land.sendy.pfe_sdk.activies.MasterActivity
 import land.sendy.pfe_sdk.api.API
-import shkonda.sendy.data.AuthRepository
 import shkonda.sendy.di.AppContainer
 import shkonda.sendy.domain.model.Result.Error
 import shkonda.sendy.domain.model.Result.Success
@@ -43,30 +42,76 @@ class LoginViewModel(
     private val _isAgreed = MutableLiveData(false)
     val isAgreed: LiveData<Boolean> = _isAgreed
 
-    // Обновление номера телефона
+    /**
+     * Обновляет номер телефона
+     * Поддерживает различные форматы ввода и ограничивает длину в зависимости от формата
+     *
+     *Примечание: При вводе символов в любую позицию строки левее её конца
+     * существующие цифры справа заменяются на новые.
+     *
+     * @param phone Введенный номер телефона
+     */
     fun updatePhone(phone: String) {
-        _phoneInput.value = phone
+        if (phone.isEmpty()) {
+            _phoneInput.value = ""
+            return
+        }
+
+        // Удаляем все нецифровые символы, кроме +
+        val cleaned = phone.replace(PHONE_REGEX, "")
+
+        // Определяем максимальную длину в зависимости от формата
+        val maxLength = when {
+            cleaned.startsWith("+") -> MAX_LENGTH_WITH_PLUS
+            cleaned.startsWith("7") || cleaned.startsWith("8") -> MAX_LENGTH_WITH_CODE
+            else -> MAX_LENGTH_WITHOUT_CODE
+        }
+
+        // Ограничиваем длину в соответствии с форматом
+        val limited = if (cleaned.length > maxLength) cleaned.substring(0, maxLength) else cleaned
+
+        _phoneInput.value = limited
     }
 
-    // Обновление состояния согласия
+    /**
+     * Обновление состояния согласия
+     */
     fun updateAgreement(agreed: Boolean) {
         _isAgreed.value = agreed
     }
 
     /**
-     * Форматирует номер телефона, удаляя пробелы и другие ненужные символы
-     * @return Отформатированный номер телефона или null, если номер некорректный
+     * Форматирует номер телефона для отправки на сервер
+     * Поддерживает различные форматы ввода:
+     * 1. +7XXXXXXXXXX
+     * 2. 7XXXXXXXXXX
+     * 3. 8XXXXXXXXXX
+     * 4. XXXXXXXXXX
+     * @return Отформатированный номер телефона в формате +7XXXXXXXXXX или null, если номер некорректный
      */
     private fun formatPhoneNumber(phone: String): String? {
         // Удаляем все пробелы и другие ненужные символы
-        val formattedPhone = phone.replace("\\s".toRegex(), "")
+        val digitsOnly = phone.replace(Regex("[^0-9+]"), "")
 
-        // Проверяем, что номер начинается с +7 и имеет правильную длину
-        if (!formattedPhone.startsWith("+7") || formattedPhone.length != 12) {
-            return null
+        // Определяем формат и нормализуем номер
+        return when {
+            // Формат 1: +7XXXXXXXXXX
+            digitsOnly.startsWith("+7") && digitsOnly.length == MAX_LENGTH_WITH_PLUS -> digitsOnly
+            // Формат 2: 7XXXXXXXXXX
+            digitsOnly.startsWith("7") && digitsOnly.length == MAX_LENGTH_WITH_CODE -> "+$digitsOnly"
+            // Формат 3: 8XXXXXXXXXX
+            digitsOnly.startsWith("8") && digitsOnly.length == MAX_LENGTH_WITH_CODE -> "+7${digitsOnly.substring(1)}"
+            // Формат 4: XXXXXXXXXX
+            digitsOnly.length == MAX_LENGTH_WITHOUT_CODE -> "+7$digitsOnly"
+            // Некорректный формат
+            else -> null
         }
 
-        return formattedPhone
+        // DEPRECATED
+        // Данная проверка уже не имеет смысла за счёт нормализации номера телефона выше
+//        if (!normalizedPhone.startsWith("+7") || normalizedPhone.length != 12) {
+//            return null
+//        }
     }
 
     /**
@@ -79,7 +124,7 @@ class LoginViewModel(
         val formattedPhone = formatPhoneNumber(phone)
 
         if (formattedPhone == null) {
-            _uiState.value = LoginUiState.Error("Некорректный формат номера телефона. Введите номер в формате +7XXXXXXXXXX")
+            _uiState.value = LoginUiState.Error(ERROR_INVALID_PHONE_FORMAT)
             return
         }
 
@@ -88,14 +133,10 @@ class LoginViewModel(
 
         // Вызов Use Case
         activateWalletUseCase(activity, formattedPhone) { result ->
-            when (result) {
-                is Success -> {
-                    _uiState.value = LoginUiState.Success(result.data.phone)
-                }
-                is Error -> {
-                    _uiState.value = LoginUiState.Error(result.error.message)
-                }
-
+            // Можем сразу в значение _uiState передать результат работы when сократив код
+            _uiState.value = when (result) {
+                is Success -> LoginUiState.Success(result.data.phone)
+                is Error -> LoginUiState.Error(result.error.message)
             }
         }
     }
@@ -113,8 +154,19 @@ class LoginViewModel(
                 val useCase = AppContainer.getActivateWalletUseCase(api)
                 return LoginViewModel(useCase, activity) as T
             }
-            throw IllegalArgumentException("Неизвестный класс ViewModel")
+            throw IllegalArgumentException(ERROR_UNKNOWN_VIEWMODEL_CLASS)
         }
+    }
+
+    /* Прощайте магические числа!!! */
+    companion object {
+        private val PHONE_REGEX = Regex("[^0-9+]")
+        private const val MAX_LENGTH_WITH_PLUS = 12 // Формат +7XXXXXXXXXX
+        private const val MAX_LENGTH_WITH_CODE = 11 // Формат 7XXXXXXXXXX или 8XXXXXXXXXX
+        private const val MAX_LENGTH_WITHOUT_CODE = 10 // Формат XXXXXXXXXX
+        private const val ERROR_INVALID_PHONE_FORMAT =
+            "Некорректный формат номера телефона. Введите номер в формате +7XXXXXXXXXX"
+        private const val ERROR_UNKNOWN_VIEWMODEL_CLASS = "Неизвестный класс ViewModel"
     }
 }
 

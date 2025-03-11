@@ -6,7 +6,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import land.sendy.pfe_sdk.activies.MasterActivity
 import land.sendy.pfe_sdk.api.API
-import shkonda.sendy.data.AuthRepository
 import shkonda.sendy.di.AppContainer
 import shkonda.sendy.domain.model.ConfirmationResult
 import shkonda.sendy.domain.model.Result.Error
@@ -42,14 +41,16 @@ class SmsViewModel(
     private val _smsCode = MutableLiveData("")
     val smsCode: LiveData<String> = _smsCode
 
-    // Обновить код подтверждения
+    /**
+     * Обновить код подтверждения
+     * @param code SMS-код
+     */
     fun updateSmsCode(code: String) {
         _smsCode.value = code
     }
 
     /**
      * Подтвердить код из SMS
-     * @param code SMS-код
      * @param phone Номер телефона пользователя
      */
     fun confirmCode(phone: String) {
@@ -58,31 +59,21 @@ class SmsViewModel(
         // Обновление состояния UI на загрузку
         _uiState.value = SmsUiState.Loading
 
-        // Вызов Use Case
+        // Вызов Use Case с сокращенной обработкой результата
         confirmPhoneUseCase(activity, code, phone) { result ->
-            when (result) {
-                is Success -> {
-                    when (result.data) {
-                        is ConfirmationResult.WalletActivated -> {
-                            _uiState.value = SmsUiState.WalletActivated
-                        }
-
-                        is ConfirmationResult.NeedBankSelection -> {
-                            _uiState.value = SmsUiState.NeedBankSelection
-                        }
-                    }
+            // Сразу передаем результат работы when в _uiState.value
+            _uiState.value = when (result) {
+                is Success -> when (result.data) {
+                    is ConfirmationResult.WalletActivated -> SmsUiState.WalletActivated
+                    is ConfirmationResult.NeedBankSelection -> SmsUiState.NeedBankSelection
                 }
-
-                is Error -> {
-                    val error = result.error
-                    if (error.attemptsExhausted) {
-                        _uiState.value = SmsUiState.AttemptsExhausted
-                    } else {
-                        _uiState.value = SmsUiState.Error(
-                            message = error.message,
-                            attemptsLeft = error.attemptsLeft
-                        )
-                    }
+                is Error -> if (result.error.attemptsExhausted) {
+                    SmsUiState.AttemptsExhausted
+                } else {
+                    SmsUiState.Error(
+                        message = result.error.message,
+                        attemptsLeft = result.error.attemptsLeft
+                    )
                 }
             }
         }
@@ -101,7 +92,12 @@ class SmsViewModel(
                 val useCase = AppContainer.getConfirmPhoneUseCase(api)
                 return SmsViewModel(useCase, activity) as T
             }
-            throw IllegalArgumentException("Неизвестный класс ViewModel")
+            throw IllegalArgumentException(ERROR_UNKNOWN_VIEWMODEL_CLASS)
         }
+    }
+
+    /* Прощайте магические числа!!! */
+    companion object {
+        private const val ERROR_UNKNOWN_VIEWMODEL_CLASS = "Неизвестный класс ViewModel"
     }
 }
