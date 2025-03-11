@@ -1,5 +1,10 @@
 package shkonda.sendy.ui.login
 
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
@@ -22,6 +27,33 @@ sealed class LoginUiState {
 }
 
 /**
+ * Визуальная трансформация для отображения префикса перед вводимым текстом
+ *
+ * @param prefix Префикс, который будет отображаться перед текстом
+ */
+class PrefixTransformation(private val prefix: String) : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        // Создаем новую строку с префиксом
+        val prefixedText = AnnotatedString(prefix + text.text)
+
+        // Создаем маппинг для корректной работы курсора
+        val offsetMapping = object : OffsetMapping {
+            override fun originalToTransformed(offset: Int): Int {
+                // Смещаем позицию курсора на длину префикса
+                return offset + prefix.length
+            }
+
+            override fun transformedToOriginal(offset: Int): Int {
+                // Если курсор находится в пределах префикса, возвращаем 0
+                return if (offset <= prefix.length) 0 else offset - prefix.length
+            }
+        }
+
+        return TransformedText(prefixedText, offsetMapping)
+    }
+}
+
+/**
  * ViewModel для экрана входа
  * Управляет состоянием UI и взаимодействует с Use Case
  */
@@ -36,41 +68,129 @@ class LoginViewModel(
 
     // Состояние ввода номера телефона
     private val _phoneInput = MutableLiveData("")
-    val phoneInput: LiveData<String> = _phoneInput
+
+    // Состояние текстового поля с учетом позиции курсора
+    private val _textFieldValue = MutableLiveData(TextFieldValue(""))
+    val textFieldValue: LiveData<TextFieldValue> = _textFieldValue
 
     // Состояние согласия с условиями
     private val _isAgreed = MutableLiveData(false)
     val isAgreed: LiveData<Boolean> = _isAgreed
 
     /**
-     * Обновляет номер телефона
-     * Поддерживает различные форматы ввода и ограничивает длину в зависимости от формата
-     *
-     *Примечание: При вводе символов в любую позицию строки левее её конца
-     * существующие цифры справа заменяются на новые.
-     *
-     * @param phone Введенный номер телефона
+     * Сбрасывает состояние Success, сохраняя введенные данные
      */
-    fun updatePhone(phone: String) {
+    fun resetSuccessState() {
+        if (_uiState.value is LoginUiState.Success) {
+            _uiState.value = LoginUiState.Initial
+        }
+    }
+
+    /**
+     * Обновляет номер телефона с учетом позиции курсора
+     * Решает проблему с заменой символов при вводе в середину строки
+     *
+     * @param value Текущее значение текстового поля с позицией курсора
+     */
+    fun updatePhoneWithCursor(value: TextFieldValue) {
+        val phone = value.text
+        val selection = value.selection
+
         if (phone.isEmpty()) {
             _phoneInput.value = ""
+            _textFieldValue.value = TextFieldValue(text = "", selection = androidx.compose.ui.text.TextRange(0))
             return
         }
 
-        // Удаляем все нецифровые символы, кроме +
-        val cleaned = phone.replace(PHONE_REGEX, "")
-
-        // Определяем максимальную длину в зависимости от формата
-        val maxLength = when {
-            cleaned.startsWith("+") -> MAX_LENGTH_WITH_PLUS
-            cleaned.startsWith("7") || cleaned.startsWith("8") -> MAX_LENGTH_WITH_CODE
-            else -> MAX_LENGTH_WITHOUT_CODE
+        // Если номер уже достиг максимальной длины и пытаются добавить еще символы
+        val currentPhone = _phoneInput.value ?: ""
+        if (currentPhone.length >= MAX_LENGTH_WITHOUT_CODE && phone.length > currentPhone.length) {
+            // Не обновляем номер, оставляем текущее значение
+            _textFieldValue.value = TextFieldValue(text = currentPhone, selection = selection)
+            return
         }
 
-        // Ограничиваем длину в соответствии с форматом
-        val limited = if (cleaned.length > maxLength) cleaned.substring(0, maxLength) else cleaned
+        // Удаляем все нецифровые символы
+        val cleaned = phone.replace(PHONE_REGEX, "")
+
+        // Обрабатываем различные форматы ввода
+        val withoutPrefix = when {
+            // Если был символ "+" и номер начинается с 7, вероятно это был формат "+7..."
+            cleaned.startsWith("+7") && cleaned.length > 1 -> {
+                cleaned.substring(2)
+            }
+            // Если номер начинается с 7 и достаточно длинный, это может быть "7..."
+            cleaned.startsWith("7") && cleaned.length > MAX_LENGTH_WITHOUT_CODE -> {
+                cleaned.substring(1)
+            }
+            // Если номер начинается с 8, заменяем 8 на пустую строку (как в formatPhoneNumber)
+            cleaned.startsWith("8") && cleaned.length > 1 -> {
+                cleaned.substring(1)
+            }
+            // В остальных случаях оставляем как есть
+            else -> {
+                cleaned
+            }
+        }
+
+        // Ограничиваем длину (10 цифр после кода страны)
+        val maxDigits = MAX_LENGTH_WITHOUT_CODE
+        val limited = if (withoutPrefix.length > maxDigits) withoutPrefix.substring(0, maxDigits) else withoutPrefix
+
+        // Если пытаются ввести символ в середину (не в конец)
+        if (selection.start < currentPhone.length && phone.length != currentPhone.length) {
+            // Определяем, сколько символов было до курсора в исходном тексте
+            val originalTextBeforeCursor = phone.substring(0, selection.start)
+            // Определяем, сколько цифр было до курсора в исходном тексте
+            val digitsBeforeCursor = originalTextBeforeCursor.count { it.isDigit() }
+
+            // Определяем, сколько символов было удалено из-за префикса
+            val prefixOffset = if (cleaned.length != withoutPrefix.length) {
+                if (digitsBeforeCursor > 0) 1 else 0 // Если курсор после первой цифры, учитываем префикс
+            } else 0
+
+            // Вычисляем новую позицию курсора
+            val newCursorPos = digitsBeforeCursor - prefixOffset
+
+            // Проверяем, что позиция не выходит за границы
+            val finalPos = newCursorPos.coerceIn(0, limited.length)
+
+            _phoneInput.value = limited
+            _textFieldValue.value = TextFieldValue(text = limited, selection = androidx.compose.ui.text.TextRange(finalPos))
+            return
+        }
+
+        // Для других случаев используем стандартный расчет позиции курсора
+        val newCursorPos = calculateNewCursorPosition(phone, cleaned, withoutPrefix, limited, selection.start)
 
         _phoneInput.value = limited
+        _textFieldValue.value = TextFieldValue(text = limited, selection = androidx.compose.ui.text.TextRange(newCursorPos))
+    }
+
+    /**
+     * Вычисляет новую позицию курсора после обработки ввода
+     */
+    private fun calculateNewCursorPosition(
+        originalText: String,
+        cleanedText: String,
+        withoutPrefix: String,
+        limitedText: String,
+        originalCursor: Int
+    ): Int {
+        // Количество символов, удаленных до позиции курсора
+        val nonDigitsBeforeCursor = originalText.substring(0, minOf(originalCursor, originalText.length))
+            .count { !it.isDigit() && it != '+' }
+
+        // Если был удален префикс (7 или 8), корректируем позицию
+        val prefixOffset = if (cleanedText != withoutPrefix) 1 else 0
+
+        // Вычисляем новую позицию с учетом удаленных символов и префикса
+        var newPos = originalCursor - nonDigitsBeforeCursor - prefixOffset
+
+        // Проверяем, что позиция не выходит за границы
+        newPos = newPos.coerceIn(0, limitedText.length)
+
+        return newPos
     }
 
     /**
@@ -82,41 +202,22 @@ class LoginViewModel(
 
     /**
      * Форматирует номер телефона для отправки на сервер
-     * Поддерживает различные форматы ввода:
-     * 1. +7XXXXXXXXXX
-     * 2. 7XXXXXXXXXX
-     * 3. 8XXXXXXXXXX
-     * 4. XXXXXXXXXX
+     * Теперь номер всегда хранится без префикса +7, поэтому просто добавляем его
+     *
      * @return Отформатированный номер телефона в формате +7XXXXXXXXXX или null, если номер некорректный
      */
     private fun formatPhoneNumber(phone: String): String? {
-        // Удаляем все пробелы и другие ненужные символы
-        val digitsOnly = phone.replace(Regex("[^0-9+]"), "")
-
-        // Определяем формат и нормализуем номер
-        return when {
-            // Формат 1: +7XXXXXXXXXX
-            digitsOnly.startsWith("+7") && digitsOnly.length == MAX_LENGTH_WITH_PLUS -> digitsOnly
-            // Формат 2: 7XXXXXXXXXX
-            digitsOnly.startsWith("7") && digitsOnly.length == MAX_LENGTH_WITH_CODE -> "+$digitsOnly"
-            // Формат 3: 8XXXXXXXXXX
-            digitsOnly.startsWith("8") && digitsOnly.length == MAX_LENGTH_WITH_CODE -> "+7${digitsOnly.substring(1)}"
-            // Формат 4: XXXXXXXXXX
-            digitsOnly.length == MAX_LENGTH_WITHOUT_CODE -> "+7$digitsOnly"
-            // Некорректный формат
-            else -> null
+        // Проверяем, что номер содержит ровно 10 цифр
+        if (phone.length != MAX_LENGTH_WITHOUT_CODE) {
+            return null
         }
 
-        // DEPRECATED
-        // Данная проверка уже не имеет смысла за счёт нормализации номера телефона выше
-//        if (!normalizedPhone.startsWith("+7") || normalizedPhone.length != 12) {
-//            return null
-//        }
+        // Добавляем префикс +7 к номеру
+        return "+7$phone"
     }
 
     /**
      * Активировать кошелек
-     * @param phone Номер телефона пользователя
      */
     fun activateWallet() {
         val phone = _phoneInput.value ?: ""
@@ -158,32 +259,11 @@ class LoginViewModel(
         }
     }
 
-    /* Прощайте магические числа!!! */
     companion object {
         private val PHONE_REGEX = Regex("[^0-9+]")
-        private const val MAX_LENGTH_WITH_PLUS = 12 // Формат +7XXXXXXXXXX
-        private const val MAX_LENGTH_WITH_CODE = 11 // Формат 7XXXXXXXXXX или 8XXXXXXXXXX
         private const val MAX_LENGTH_WITHOUT_CODE = 10 // Формат XXXXXXXXXX
         private const val ERROR_INVALID_PHONE_FORMAT =
             "Некорректный формат номера телефона. Введите номер в формате +7XXXXXXXXXX"
         private const val ERROR_UNKNOWN_VIEWMODEL_CLASS = "Неизвестный класс ViewModel"
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

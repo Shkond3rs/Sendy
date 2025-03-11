@@ -1,6 +1,5 @@
 package shkonda.sendy.navigation
 
-import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -27,6 +26,11 @@ fun SendyNavHost(
     api: API,
     activity: MasterActivity
 ) {
+    // Создаем общую ViewModel для экрана входа, чтобы сохранять состояние
+    val loginViewModel: LoginViewModel = viewModel(
+        factory = LoginViewModel.Factory(api, activity)
+    )
+
     NavHost(navController = navController, startDestination = "splash") {
         composable("splash") {
             SplashScreen(onTimeout = {
@@ -37,9 +41,6 @@ fun SendyNavHost(
         }
 
         composable("login") {
-            val loginViewModel: LoginViewModel = viewModel(
-                factory = LoginViewModel.Factory(api, activity)
-            )
 
             // Отображение экрана ввода телефона
             LoginScreen(
@@ -72,17 +73,8 @@ fun SendyNavHost(
                     navController.navigate("bank_selection?phone=$phone")
                 },
                 onReturnToLogin = {
-                    // Показываем Toast с сообщением
-                    Toast.makeText(
-                        activity,
-                        "Пожалуйста, повторите регистрацию.",
-                        Toast.LENGTH_LONG
-                    ).show()
-
-                    // Возвращаемся на экран входа
-                    navController.navigate("login") {
-                        popUpTo("sms") { inclusive = true }
-                    }
+                    // Возвращаемся на экран входа без сброса состояния
+                    navController.popBackStack()
                 }
             )
         }

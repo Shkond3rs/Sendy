@@ -49,6 +49,7 @@ class SmsViewModel(
         _smsCode.value = code
     }
 
+
     /**
      * Подтвердить код из SMS
      * @param phone Номер телефона пользователя

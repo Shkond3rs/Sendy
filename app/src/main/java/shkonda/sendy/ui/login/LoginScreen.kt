@@ -38,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -47,7 +48,7 @@ import shkonda.sendy.ui.theme.SendyTheme
 
 @Preview
 @Composable
-private fun textPrev() {
+private fun TextPrev() {
     SendyTheme {
         Surface {
             Card(
@@ -109,10 +110,17 @@ fun LoginScreen(
 ) {
     // Наблюдение за состоянием из ViewModel
     val uiState by viewModel.uiState.observeAsState()
-    val phone by viewModel.phoneInput.observeAsState("")
+    val textFieldValue by viewModel.textFieldValue.observeAsState(TextFieldValue(""))
     val isAgreed by viewModel.isAgreed.observeAsState(false)
 
     var showTermsDialog by remember { mutableStateOf(false) }
+
+    // При входе на экран сбрасываем состояние Success, если оно было
+    LaunchedEffect(Unit) {
+        if (uiState is LoginUiState.Success) {
+            viewModel.resetSuccessState()
+        }
+    }
 
     // Обработка состояний UI
     LaunchedEffect(uiState) {
@@ -140,8 +148,8 @@ fun LoginScreen(
         )
 
         OutlinedTextField(
-            value = phone,
-            onValueChange = { viewModel.updatePhone(it) },
+            value = textFieldValue,
+            onValueChange = { viewModel.updatePhoneWithCursor(it) },
             label = { Text("Номер телефона") },
             modifier = Modifier
                 .fillMaxWidth()
@@ -151,7 +159,8 @@ fun LoginScreen(
                 keyboardType = KeyboardType.Phone
             ),
             singleLine = true,
-            maxLines = 1
+            maxLines = 1,
+            visualTransformation = PrefixTransformation("+7")
         )
 
         if (uiState is LoginUiState.Error) {
